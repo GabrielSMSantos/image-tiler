@@ -6,7 +6,8 @@ const https = require('https');
 
 let mainWindow;
 
-const MATRIZES_DIR = path.join(__dirname, 'matrizes');
+// userData is per-user and writable even when the app is packaged in app.asar (read-only)
+const MATRIZES_DIR = path.join(app.getPath('userData'), 'matrizes');
 if (!fs.existsSync(MATRIZES_DIR)) fs.mkdirSync(MATRIZES_DIR, { recursive: true });
 
 function createWindow() {
@@ -70,7 +71,7 @@ ipcMain.handle('save-pdf', async (e, pdfBytes) => {
   catch (err) { return { success: false, error: err.message }; }
 });
 
-ipcMain.handle('print-pdf', async (e, pdfBytes) => {
+ipcMain.handle('print-html', async (e, { html, pageSize }) => {
   return new Promise(resolve => {
     let win, tmpPath, settled = false;
     const finish = (result) => {
@@ -81,22 +82,43 @@ ipcMain.handle('print-pdf', async (e, pdfBytes) => {
       resolve(result);
     };
     try {
-      tmpPath = path.join(os.tmpdir(), `imagetiler-print-${Date.now()}.pdf`);
-      fs.writeFileSync(tmpPath, Buffer.from(pdfBytes));
-      // plugins:true is required so Electron's built-in PDF viewer renders the file
-      win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false, contextIsolation: true, plugins: true } });
+      tmpPath = path.join(os.tmpdir(), `imagetiler-print-${Date.now()}.html`);
+      fs.writeFileSync(tmpPath, html, 'utf8');
+      win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false, contextIsolation: true } });
       win.webContents.once('did-finish-load', () => {
-        win.webContents.print({ silent: false, printBackground: true }, (ok, err) => {
+        win.webContents.print({ silent: false, printBackground: true, pageSize }, (ok, err) => {
           finish(ok ? { success: true } : { success: false, error: err || 'Cancelado.' });
         });
       });
       win.webContents.once('did-fail-load', (ev, code, desc) => {
-        finish({ success: false, error: `Falha ao carregar PDF: ${desc} (${code})` });
+        finish({ success: false, error: `Falha ao carregar conteudo: ${desc} (${code})` });
       });
-      win.loadURL(`file://${tmpPath}`);
-      setTimeout(() => finish({ success: false, error: 'Timeout.' }), 15000);
+      win.loadFile(tmpPath);
+      // Generous timeout: silent:false shows the OS print dialog, which waits for the user
+      setTimeout(() => finish({ success: false, error: 'Timeout.' }), 120000);
     } catch (err) { finish({ success: false, error: err.message }); }
   });
+});
+
+// ── IMAGE EXPORT (Editor de Matriz) ─────────────────────────────────────────
+ipcMain.handle('export-image-dialog', async (e, defaultName) => {
+  const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+    title: 'Exportar imagem',
+    defaultPath: path.join(os.homedir(), 'Desktop', defaultName || 'matriz.png'),
+    filters: [
+      { name: 'PNG', extensions: ['png'] },
+      { name: 'JPEG', extensions: ['jpg', 'jpeg'] }
+    ]
+  });
+  if (canceled || !filePath) return { success: false };
+  return { success: true, filePath };
+});
+
+ipcMain.handle('write-image-file', async (e, { filePath, bytes }) => {
+  try {
+    fs.writeFileSync(filePath, Buffer.from(bytes));
+    return { success: true, filePath };
+  } catch (err) { return { success: false, error: err.message }; }
 });
 
 // ── UPDATE CHECK ───────────────────────────────────────────────────────────

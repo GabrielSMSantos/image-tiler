@@ -984,10 +984,51 @@ function loadSystemFonts() {
   }).catch(function(){});
 }
 
-// ── Send to Tiler — pixel-perfect: render visible area + text overlay ─────────
+// ── Composite render — pixel-perfect: base image (with color edits) + text overlay ───
+// Used by both "Usar no Tiler" and "Exportar Imagem" so the output is identical.
+function buildCompositeCanvas() {
+  return new Promise(function(resolve, reject) {
+    if (!st.matrix) { reject(new Error('Nenhuma matriz aberta.')); return; }
+    commitInlineEdit();
+
+    var W = st.natW, H = st.natH;
+    var exp = document.createElement('canvas');
+    exp.width = W; exp.height = H;
+    var ectx = exp.getContext('2d');
+
+    function finish() {
+      drawTextLayers(ectx, st.textLayers);
+      resolve(exp);
+    }
+
+    if (st.format === 'svg' && st.svgDoc) {
+      // Serialize the current SVG DOM (with color edits) at natural size → drawImage
+      var svgClone = st.svgDoc.cloneNode(true);
+      svgClone.setAttribute('width',  W);
+      svgClone.setAttribute('height', H);
+      var svgStr  = new XMLSerializer().serializeToString(svgClone);
+      var blob    = new Blob([svgStr], { type: 'image/svg+xml' });
+      var blobUrl = URL.createObjectURL(blob);
+      var imgEl   = new Image();
+      imgEl.onload = function() {
+        ectx.drawImage(imgEl, 0, 0, W, H);
+        URL.revokeObjectURL(blobUrl);
+        finish();
+      };
+      imgEl.onerror = function() { URL.revokeObjectURL(blobUrl); reject(new Error('Erro ao renderizar SVG.')); };
+      imgEl.src = blobUrl;
+    } else if (st.baseData) {
+      ectx.putImageData(st.baseData, 0, 0);
+      finish();
+    } else {
+      reject(new Error('Nada para exportar.'));
+    }
+  });
+}
+
+// ── Send to Tiler ───────────────────────────────────────────────────────────
 document.getElementById('btnSendToTiler').addEventListener('click', function() {
   if (!st.matrix) { log('Nenhuma matriz aberta.', true); return; }
-  commitInlineEdit();
 
   // Apply linked preset if any
   var presetName = st.matrix.presetName;
@@ -1000,14 +1041,7 @@ document.getElementById('btnSendToTiler').addEventListener('click', function() {
     }
   }
 
-  var W = st.natW, H = st.natH;
-  var exp = document.createElement('canvas');
-  exp.width = W; exp.height = H;
-  var ectx = exp.getContext('2d');
-
-  function composite() {
-    // Same drawing code as the editor's text overlay — guarantees pixel-identical output
-    drawTextLayers(ectx, st.textLayers);
+  buildCompositeCanvas().then(function(exp) {
     var url = exp.toDataURL('image/png');
     var img = new Image();
     img.onload = function() {
@@ -1018,28 +1052,38 @@ document.getElementById('btnSendToTiler').addEventListener('click', function() {
     };
     img.src = url;
     log('Enviado para o Tiler' + (presetName ? ' com preset "' + presetName + '"' : '') + '.');
-  }
+  }).catch(function(err) { log(err.message, true); });
+});
 
-  if (st.format === 'svg' && st.svgDoc) {
-    // Serialize the current SVG DOM (with color edits) at display size → drawImage
-    var svgClone = st.svgDoc.cloneNode(true);
-    svgClone.setAttribute('width',  W);
-    svgClone.setAttribute('height', H);
-    var svgStr  = new XMLSerializer().serializeToString(svgClone);
-    var blob    = new Blob([svgStr], { type: 'image/svg+xml' });
-    var blobUrl = URL.createObjectURL(blob);
-    var imgEl   = new Image();
-    imgEl.onload = function() {
-      ectx.drawImage(imgEl, 0, 0, W, H);
-      URL.revokeObjectURL(blobUrl);
-      composite();
-    };
-    imgEl.onerror = function() { URL.revokeObjectURL(blobUrl); log('Erro SVG export.', true); };
-    imgEl.src = blobUrl;
-  } else if (st.baseData) {
-    ectx.putImageData(st.baseData, 0, 0);
-    composite();
-  }
+// ── Export as PNG/JPEG — same composite, saved to disk ────────────────────────
+document.getElementById('btnExportImage').addEventListener('click', function() {
+  if (!st.matrix) { log('Nenhuma matriz aberta.', true); return; }
+
+  buildCompositeCanvas().then(function(exp) {
+    var safeName = (st.matrix.name || 'matriz').replace(/[\\/:*?"<>|]/g, '_');
+    return window.electronAPI.exportImageDialog(safeName + '.png').then(function(dlg) {
+      if (!dlg.success) return;
+      var ext  = dlg.filePath.split('.').pop().toLowerCase();
+      var isJpeg = ext === 'jpg' || ext === 'jpeg';
+      var src = exp;
+      if (isJpeg) {
+        // JPEG has no alpha channel — flatten onto a white background first
+        src = document.createElement('canvas');
+        src.width = exp.width; src.height = exp.height;
+        var sctx = src.getContext('2d');
+        sctx.fillStyle = '#fff';
+        sctx.fillRect(0, 0, src.width, src.height);
+        sctx.drawImage(exp, 0, 0);
+      }
+      var dataUrl = isJpeg ? src.toDataURL('image/jpeg', 0.92) : src.toDataURL('image/png');
+      var b64   = dataUrl.split(',')[1];
+      var bytes = Uint8Array.from(atob(b64), function(c) { return c.charCodeAt(0); });
+      return window.electronAPI.writeImageFile({ filePath: dlg.filePath, bytes: Array.from(bytes) }).then(function(result) {
+        if (result.success) log('Exportado: ' + result.filePath, false);
+        else log('Erro ao exportar: ' + result.error, true);
+      });
+    });
+  }).catch(function(err) { log(err.message, true); });
 });
 
 // ── Recompute stage transform when canvas area resizes ────────────────────────

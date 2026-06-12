@@ -29,7 +29,7 @@ if (document.readyState === 'loading') {
 
 contextBridge.exposeInMainWorld('electronAPI', {
   savePDF:            (b) => ipcRenderer.invoke('save-pdf', b),
-  printPDF:           (b) => ipcRenderer.invoke('print-pdf', b),
+  printHTML:          (html, pageSize) => ipcRenderer.invoke('print-html', { html, pageSize }),
   getMatrixFilePath:  ()  => filePathCache.get('matrix') || null,
   listMatrices:       ()  => ipcRenderer.invoke('list-matrices'),
   saveMatrix:         (d) => ipcRenderer.invoke('save-matrix', d),
@@ -40,4 +40,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readMatrixImage:    (d) => ipcRenderer.invoke('read-matrix-image', d),
   checkForUpdates:    ()  => ipcRenderer.invoke('check-for-updates'),
   openExternal:       (url) => ipcRenderer.invoke('open-external', url),
+  exportImageDialog:  (defaultName) => ipcRenderer.invoke('export-image-dialog', defaultName),
+  writeImageFile:     (d) => ipcRenderer.invoke('write-image-file', d),
 });

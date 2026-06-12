@@ -250,7 +250,7 @@ function buildGuideOverlay(p, lay, zoom) {
   var lx = ox + cW + 8;
   var ly = oy + 4;
   var legH = (p.gapH > 0 || p.gapV > 0) ? 38 : 22;
-  s += '<rect x="' + lx + '" y="' + ly + '" width="76" height="' + legH + '" rx="3" fill="#111" stroke="#333" stroke-width="1"/>';
+  s += '<rect x="' + lx + '" y="' + ly + '" width="76" height="' + legH + '" rx="3" fill="#F5F5F7" stroke="#D1D1DA" stroke-width="1"/>';
   s += '<line x1="' + (lx+6) + '" y1="' + (ly+11) + '" x2="' + (lx+18) + '" y2="' + (ly+11) + '" stroke="' + marginCol + '" stroke-width="1.5" stroke-dasharray="4 3"/>';
   s += '<text x="' + (lx+22) + '" y="' + (ly+14) + '" fill="' + marginCol + '" font-family="monospace" font-size="9" font-weight="bold">margem</text>';
   if (p.gapH > 0 || p.gapV > 0) {
@@ -259,6 +259,49 @@ function buildGuideOverlay(p, lay, zoom) {
   }
 
   return { svgW: svgW, svgH: svgH, svgContent: s, offsetX: -LEFT, offsetY: -TOP };
+}
+
+// ── Print: build one full-resolution SVG page per sheet ────────────────────
+function buildPrintPageSVG(p, lay, pageIndex) {
+  var startIdx = pageIndex * lay.perPage;
+  var count    = Math.min(lay.perPage, p.copies - startIdx);
+  var xOff     = alignOffset(p, lay);
+  var s = '<div class="pg"><svg xmlns="http://www.w3.org/2000/svg" width="' + p.pageW + 'cm" height="' + p.pageH + 'cm" viewBox="0 0 ' + p.pageW + ' ' + p.pageH + '">';
+  s += '<rect width="' + p.pageW + '" height="' + p.pageH + '" fill="#fff"/>';
+  for (var i = 0; i < count; i++) {
+    var col = i % lay.cols;
+    var row = Math.floor(i / lay.cols);
+    var x = p.marginH + xOff + col * (p.imgW + p.gapH);
+    var y = p.marginV + row * (p.imgH + p.gapV);
+    s += '<use href="#tilerSrcImg" x="' + x + '" y="' + y + '" width="' + p.imgW + '" height="' + p.imgH + '"/>';
+  }
+  s += '</svg></div>';
+  return s;
+}
+
+// Builds a print-ready HTML document: one page per sheet, each with the tiled
+// image embedded once and reused via <use> to keep the file small.
+async function generatePrintHTML() {
+  if (!state.imgEl || !state.imgSrc) return null;
+  var p   = getParams();
+  var lay = calcLayout(p);
+  if (!lay) return null;
+
+  var pagesHtml = '';
+  for (var pg = 0; pg < lay.pages; pg++) pagesHtml += buildPrintPageSVG(p, lay, pg);
+
+  var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' +
+    '*{margin:0;padding:0;}' +
+    '@page{size:' + p.pageW + 'cm ' + p.pageH + 'cm;margin:0;}' +
+    '.pg{width:' + p.pageW + 'cm;height:' + p.pageH + 'cm;page-break-after:always;}' +
+    '.pg:last-child{page-break-after:auto;}' +
+    '.pg svg{display:block;width:100%;height:100%;}' +
+    '</style></head><body>' +
+    '<svg width="0" height="0" style="position:absolute"><defs><image id="tilerSrcImg" href="' + state.imgSrc + '" width="' + p.imgW + '" height="' + p.imgH + '" preserveAspectRatio="none"/></defs></svg>' +
+    pagesHtml +
+    '</body></html>';
+
+  return { html: html, pageSize: { width: Math.round(p.pageW * 10000), height: Math.round(p.pageH * 10000) } };
 }
 
 // ── Render all pages ───────────────────────────────────────────────────────
@@ -681,17 +724,16 @@ $('btnSave').addEventListener('click', async function() {
 });
 
 $('btnPrint').addEventListener('click', async function() {
-  setLoading(true); setStatus('Gerando PDF para impressao…');
+  setLoading(true); setStatus('Preparando impressao…');
   try {
-    var bytes = state.lastPdfBytes || await generatePDF();
-    if (!bytes) { setStatus('Erro ao gerar PDF.', 'err'); setLoading(false); return; }
-    state.lastPdfBytes = bytes;
-    // Timeout safety: se demorar mais de 8s, libera a UI de qualquer forma
+    var printDoc = await generatePrintHTML();
+    if (!printDoc) { setStatus('Erro ao preparar impressao.', 'err'); setLoading(false); return; }
+    // Timeout safety: o dialogo de impressao do SO aguarda o usuario, entao damos uma margem grande
     var done = false;
     var timer = setTimeout(function() {
       if (!done) { done = true; setLoading(false); $('btnSave').disabled = false; $('btnPrint').disabled = false; }
-    }, 8000);
-    var result = await window.electronAPI.printPDF(Array.from(bytes));
+    }, 120000);
+    var result = await window.electronAPI.printHTML(printDoc.html, printDoc.pageSize);
     done = true; clearTimeout(timer);
     if (result.success) {
       setStatus('Impressao enviada.', 'ok');
