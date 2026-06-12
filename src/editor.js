@@ -52,7 +52,7 @@ var ZOOM_STEP = 0.1, ZOOM_MIN = 0.1, ZOOM_MAX = 4;
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function log(msg, err) {
-  if (statusBar) { statusBar.textContent = msg; statusBar.style.color = err ? '#ff6b35' : '#e8ff47'; }
+  if (statusBar) { statusBar.textContent = msg; statusBar.style.color = err ? 'var(--accent2)' : 'var(--accent)'; }
   console.log('[editor]', msg);
 }
 function hexToRgb(h) { return [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)]; }
@@ -204,7 +204,7 @@ function renderGallery() {
 
       var info = document.createElement('div'); info.className = 'matrix-info';
       var badge = m.format === 'svg'
-        ? '<span style="font-size:9px;background:#1a1a2e;color:#7b9cff;border:1px solid #7b9cff;border-radius:3px;padding:1px 5px;margin-left:4px;">SVG</span>'
+        ? '<span style="font-size:9px;background:rgba(91,91,214,0.10);color:#5B5BD6;border:1px solid rgba(91,91,214,0.35);border-radius:3px;padding:1px 5px;margin-left:4px;">SVG</span>'
         : '';
       info.innerHTML = '<div class="matrix-name">' + esc(m.name) + badge + '</div>' +
         (m.presetName ? '<div style="font-size:9px;color:var(--accent);font-family:\'DM Mono\',monospace;margin-top:2px">preset: ' + esc(m.presetName) + '</div>' : '');
