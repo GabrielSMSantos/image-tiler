@@ -1,0 +1,47 @@
+{
+  "name": "image-tiler",
+  "version": "2.0.0",
+  "description": "Replica de imagens para impressão",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --x64",
+    "build-portable": "electron-builder --win portable --x64"
+  },
+  "build": {
+    "appId": "com.personal.image-tiler",
+    "productName": "Image Tiler",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  },
+  "dependencies": {
+    "electron": "^36.3.1",
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "electron-builder": "^26.0.12"
+  }
+}

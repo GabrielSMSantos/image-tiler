@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Image Tiler</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d0d0d; --surface: #161616; --surface2: #202020;
+      --border: #2a2a2a; --border-hi: #3d3d3d;
+      --accent: #e8ff47; --accent2: #ff6b35;
+      --text: #f0f0f0; --muted: #666; --radius: 6px;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ── HEADER ── */
+    header { padding: 0 20px; border-bottom: 1px solid var(--border); display: flex; align-items: stretch; gap: 0; flex-shrink: 0; height: 46px; }
+    .logo-area { display: flex; align-items: center; gap: 10px; padding-right: 20px; border-right: 1px solid var(--border); margin-right: 4px; }
+    .logo-mark { width: 24px; height: 24px; background: var(--accent); display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 4px; border-radius: 4px; }
+    .logo-mark span { background: var(--bg); border-radius: 1px; display: block; }
+    .logo-area h1 { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+    /* ── TABS ── */
+    .tabs { display: flex; align-items: stretch; gap: 0; }
+    .tab-btn {
+      display: flex; align-items: center; gap: 7px;
+      padding: 0 18px; font-family: 'Syne', sans-serif; font-size: 11px;
+      font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s;
+      -webkit-app-region: no-drag; margin-bottom: -1px;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-btn svg { flex-shrink: 0; }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .version { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); }
+    .update-btn { display: none; align-items: center; gap: 6px; background: var(--accent); color: #111; border: none; border-radius: 4px; padding: 5px 10px; font-family: 'Syne', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; -webkit-app-region: no-drag; }
+    .update-btn:hover { background: #fff; }
+    .update-btn.visible { display: flex; }
+
+    /* ── TAB PANELS ── */
+    .tab-panel { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+    .tab-panel.active { display: flex; }
+
+    /* ── TILER LAYOUT ── */
+    .workspace { display: grid; grid-template-columns: 292px 1fr; flex: 1; overflow: hidden; }
+    .sidebar { border-right: 1px solid var(--border); overflow-y: auto; padding: 16px 14px; display: flex; flex-direction: column; gap: 18px; }
+    .sidebar::-webkit-scrollbar { width: 4px; }
+    .sidebar::-webkit-scrollbar-track { background: transparent; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 4px; }
+    .section-label { font-size: 10px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: #e0e0e0; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 5px; }
+    .drop-zone { border: 2px dashed var(--border-hi); border-radius: var(--radius); padding: 20px 16px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; position: relative; }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: rgba(232,255,71,0.04); }
+    .drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .drop-zone .drop-icon { margin-bottom: 8px; display: flex; justify-content: center; }
+    .drop-zone p { font-size: 11px; color: var(--muted); line-height: 1.5; }
+    .drop-zone p strong { color: var(--accent); font-weight: 600; }
+    .drop-thumb { width: 100%; aspect-ratio: 4/3; object-fit: contain; border-radius: 4px; border: 1px solid var(--border); background: #111; display: none; margin-top: 10px; }
+    .drop-thumb.visible { display: block; }
+    .field-group { display: flex; flex-direction: column; gap: 9px; }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label { font-size: 10px; color: #888; font-weight: 500; letter-spacing: 0.04em; }
+    .field input, .field select { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px; padding: 7px 10px; outline: none; transition: border-color 0.15s; width: 100%; -webkit-app-region: no-drag; appearance: none; -webkit-appearance: none; }
+    .field input:focus, .field select:focus { border-color: var(--accent); }
+    .field select { cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
+    .field select option { background: #1a1a1a; color: var(--text); }
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .input-wrap { position: relative; }
+    .input-wrap input { padding-right: 30px; }
+    .input-wrap .unit { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace; pointer-events: none; }
+    #customPageSize { display: none; }
+    #customPageSize.visible { display: grid; }
+    .align-btns { display: flex; gap: 4px; }
+    .align-btn { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--muted); font-size: 16px; padding: 6px 0; cursor: pointer; transition: border-color 0.15s, color 0.15s, background 0.15s; display: flex; align-items: center; justify-content: center; -webkit-app-region: no-drag; }
+    .align-btn:hover { border-color: var(--border-hi); color: var(--text); }
+    .align-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(232,255,71,0.07); }
+    .preset-wrap { position: relative; }
+    .preset-trigger { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px; padding: 7px 32px 7px 10px; outline: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: border-color 0.15s; -webkit-app-region: no-drag; text-align: left; }
+    .preset-trigger:hover, .preset-trigger.open { border-color: var(--accent); }
+    .preset-trigger .pt-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .preset-trigger .pt-arrow { font-size: 9px; color: var(--muted); margin-left: 8px; transition: transform 0.15s; flex-shrink: 0; }
+    .preset-trigger.open .pt-arrow { transform: rotate(180deg); }
+    .preset-dropdown { position: fixed; z-index: 300; background: var(--surface2); border: 1px solid var(--border-hi); border-radius: var(--radius); overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.5); display: none; flex-direction: column; min-width: 200px; }
+    .preset-dropdown.open { display: flex; }
+    .preset-add-row { display: flex; align-items: center; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.15s; }
+    .preset-add-row:hover { background: rgba(232,255,71,0.05); }
+    .preset-add-row .add-icon { padding: 8px 10px; color: var(--accent); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .preset-add-row .add-label { font-size: 11px; color: var(--accent); font-family: 'DM Mono', monospace; flex: 1; }
+    .preset-new-input-row { display: none; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border); background: rgba(232,255,71,0.04); }
+    .preset-new-input-row.visible { display: flex; }
+    .preset-new-input-row input { flex: 1; background: transparent; border: 1px solid var(--border-hi); border-radius: 4px; color: var(--text); font-family: 'DM Mono', monospace; font-size: 11px; padding: 5px 8px; outline: none; -webkit-app-region: no-drag; }
+    .preset-new-input-row input:focus { border-color: var(--accent); }
+    .preset-new-input-row button { background: var(--accent); color: #000; border: none; border-radius: 4px; font-size: 10px; font-weight: 700; padding: 5px 8px; cursor: pointer; font-family: 'Syne', sans-serif; -webkit-app-region: no-drag; }
+    .preset-list { overflow-y: auto; max-height: 180px; }
+    .preset-list::-webkit-scrollbar { width: 3px; }
+    .preset-list::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 3px; }
+    .preset-item { display: flex; align-items: center; padding: 7px 10px; cursor: pointer; gap: 6px; transition: background 0.12s; }
+    .preset-item:hover { background: rgba(255,255,255,0.04); }
+    .preset-item.selected { background: rgba(232,255,71,0.07); }
+    .preset-item .pi-name { flex: 1; font-size: 11px; font-family: 'DM Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .preset-item.selected .pi-name { color: var(--accent); }
+    .preset-item .pi-del { flex-shrink: 0; background: none; border: none; color: var(--muted); font-size: 13px; cursor: pointer; padding: 2px 4px; border-radius: 3px; line-height: 1; transition: color 0.12s; -webkit-app-region: no-drag; }
+    .preset-item .pi-del:hover { color: var(--accent2); }
+    .btn-save-preset { width: 100%; background: var(--surface); border: 1px solid var(--border-hi); border-radius: var(--radius); color: var(--text); font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 8px; cursor: pointer; transition: border-color 0.15s, color 0.15s; -webkit-app-region: no-drag; margin-top: 6px; display: flex; align-items: center; justify-content: center; gap: 5px; }
+    .btn-save-preset:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .btn-compact { display: flex; align-items: center; justify-content: center; gap: 5px; padding: 8px 6px; font-size: 10px; }
+    .btn-compact svg { flex-shrink: 0; }
+    button { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; border: none; border-radius: var(--radius); padding: 10px 14px; cursor: pointer; transition: opacity 0.15s, transform 0.1s; -webkit-app-region: no-drag; }
+    button:active { transform: scale(0.98); }
+    button:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #000; }
+    .btn-primary:hover:not(:disabled) { opacity: 0.88; }
+    .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border-hi); }
+    .btn-secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .btn-danger { background: transparent; color: var(--accent2); border: 1px solid var(--accent2); }
+    .btn-danger:hover:not(:disabled) { background: rgba(255,107,53,0.08); }
+    .status-bar { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); padding: 5px 2px; min-height: 22px; }
+    .status-bar.ok { color: var(--accent); }
+    .status-bar.err { color: var(--accent2); }
+    .preview-area { display: flex; flex-direction: column; overflow: hidden; }
+    .preview-toolbar { padding: 8px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; flex-shrink: 0; flex-wrap: wrap; }
+    .preview-toolbar > span { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); }
+    .badge { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 3px 10px; font-size: 10px; font-family: 'DM Mono', monospace; color: var(--text); }
+    .zoom-controls { display: flex; gap: 4px; margin-left: auto; align-items: center; }
+    .zoom-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text); width: 26px; height: 26px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 15px; cursor: pointer; transition: border-color 0.15s; padding: 0; -webkit-app-region: no-drag; }
+    .zoom-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .zoom-level { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); min-width: 34px; text-align: center; }
+    .guide-toggle { display: flex; align-items: center; gap: 5px; font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); cursor: pointer; user-select: none; -webkit-app-region: no-drag; }
+    .guide-toggle input[type=checkbox] { accent-color: var(--accent); width: 13px; height: 13px; cursor: pointer; }
+    .canvas-wrapper { flex: 1; overflow: auto; display: flex; flex-direction: column; align-items: center; padding: 28px 28px 48px; gap: 28px; background: #080808; }
+    .canvas-wrapper::-webkit-scrollbar { width: 6px; height: 6px; }
+    .canvas-wrapper::-webkit-scrollbar-track { background: transparent; }
+    .canvas-wrapper::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 4px; }
+    .page-outer { position: relative; flex-shrink: 0; }
+    .page-canvas-wrap { position: relative; box-shadow: 0 6px 32px rgba(0,0,0,0.7); }
+    .page-canvas-wrap canvas { display: block; }
+    .guide-overlay-svg { position: absolute; pointer-events: none; overflow: visible; }
+    .page-label { text-align: center; font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); margin-top: 10px; }
+    .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 12px; color: var(--muted); }
+    .empty-state p { font-size: 13px; }
+    .spinner { display: none; width: 13px; height: 13px; border: 2px solid var(--border-hi); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; flex-shrink: 0; }
+    .spinner.visible { display: block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .inline-prompt { display: none; flex-direction: column; gap: 6px; background: var(--surface2); border: 1px solid var(--border-hi); border-radius: var(--radius); padding: 10px; margin-top: 6px; }
+    .inline-prompt.visible { display: flex; }
+    .inline-prompt label { font-size: 10px; color: var(--muted); font-weight: 600; }
+    .inline-prompt input { background: var(--surface); border: 1px solid var(--border-hi); border-radius: 4px; color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px; padding: 7px 10px; outline: none; -webkit-app-region: no-drag; }
+    .inline-prompt input:focus { border-color: var(--accent); }
+    .inline-prompt-actions { display: flex; gap: 6px; }
+    .inline-prompt-actions button { flex: 1; padding: 7px; font-size: 10px; border-radius: 4px; cursor: pointer; border: none; }
+    .ipa-ok { background: var(--accent); color: #000; }
+    .ipa-cancel { background: var(--surface); color: var(--muted); border: 1px solid var(--border) !important; }
+
+    /* ── EDITOR DE MATRIZ ── */
+    .editor-layout { display: grid; grid-template-columns: 260px 1fr 264px; flex: 1; overflow: hidden; transition: grid-template-columns 0.18s ease; }
+    .editor-layout.panel-collapsed { grid-template-columns: 260px 1fr 0px; }
+    @media (max-width: 1100px) {
+      .editor-layout { grid-template-columns: 220px 1fr 240px; }
+      .editor-layout.panel-collapsed { grid-template-columns: 220px 1fr 0px; }
+    }
+
+    /* Gallery panel */
+    .gallery-panel { border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+    .gallery-header { padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
+    .gallery-header span { font-size: 10px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: #e0e0e0; flex: 1; }
+    .gallery-upload-btn { background: var(--accent); color: #000; border: none; border-radius: var(--radius); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 6px 10px; cursor: pointer; display: flex; align-items: center; gap: 5px; -webkit-app-region: no-drag; flex-shrink: 0; }
+    .gallery-upload-btn:hover { opacity: 0.88; }
+    .gallery-search-wrap { padding: 8px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .gallery-search-wrap input { width: 100%; background: var(--bg); border: 1px solid var(--border-hi); border-radius: var(--radius); color: var(--text); font-family: 'DM Mono', monospace; font-size: 11px; padding: 6px 10px; outline: none; -webkit-app-region: no-drag; }
+    .gallery-search-wrap input:focus { border-color: var(--accent); }
+    .gallery-search-wrap input::placeholder { color: var(--muted); }
+    .gallery-list { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+    .gallery-list::-webkit-scrollbar { width: 4px; }
+    .gallery-list::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 4px; }
+    .matrix-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; cursor: pointer; transition: border-color 0.15s; display: flex; align-items: center; gap: 0; }
+    .matrix-card:hover { border-color: var(--border-hi); }
+    .matrix-card.selected { border-color: var(--accent); }
+    .matrix-thumb { width: 72px; height: 54px; object-fit: cover; flex-shrink: 0; background: #111; }
+    .matrix-info { flex: 1; padding: 8px 10px; overflow: hidden; }
+    .matrix-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .matrix-actions { display: flex; flex-direction: column; gap: 4px; padding: 6px; flex-shrink: 0; }
+    .matrix-btn { background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); padding: 4px 6px; font-size: 9px; cursor: pointer; -webkit-app-region: no-drag; display: flex; align-items: center; gap: 3px; font-family: 'Syne', sans-serif; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; transition: color 0.12s, border-color 0.12s; white-space: nowrap; }
+    .matrix-btn:hover { color: var(--text); border-color: var(--border-hi); }
+    .matrix-btn.edit { color: var(--accent); border-color: var(--accent); }
+    .matrix-btn.danger:hover { color: var(--accent2); border-color: var(--accent2); }
+    .gallery-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--muted); padding: 20px; text-align: center; }
+    .gallery-empty p { font-size: 12px; line-height: 1.6; }
+
+    /* Upload name modal */
+    .upload-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 500; display: none; align-items: center; justify-content: center; }
+    .upload-modal-overlay.visible { display: flex; }
+    .upload-modal { background: var(--surface); border: 1px solid var(--border-hi); border-radius: 10px; padding: 22px; width: 320px; display: flex; flex-direction: column; gap: 14px; }
+    .upload-modal h3 { font-size: 13px; font-weight: 700; }
+    .upload-modal input { background: var(--bg); border: 1px solid var(--border-hi); border-radius: var(--radius); color: var(--text); font-family: 'DM Mono', monospace; font-size: 13px; padding: 9px 12px; outline: none; width: 100%; -webkit-app-region: no-drag; }
+    .upload-modal input:focus { border-color: var(--accent); }
+    .upload-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .upload-modal-actions button { padding: 8px 16px; font-size: 10px; border-radius: 4px; }
+
+    /* Image preview modal */
+    .drop-thumb.visible { cursor: zoom-in; }
+    .image-preview-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 600; display: none; align-items: center; justify-content: center; }
+    .image-preview-modal-overlay.visible { display: flex; }
+    .image-preview-modal { background: var(--surface); border: 1px solid var(--border-hi); border-radius: 10px; width: min(90vw, 900px); height: min(85vh, 800px); display: flex; flex-direction: column; overflow: hidden; }
+    .image-preview-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; }
+    .image-preview-close { background: none; border: 1px solid var(--border); color: var(--text); width: 26px; height: 26px; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; -webkit-app-region: no-drag; }
+    .image-preview-close:hover { border-color: var(--accent2); color: var(--accent2); }
+    .image-preview-modal-body { flex: 1; overflow: auto; display: flex; align-items: center; justify-content: center; }
+    .image-preview-modal-body img { max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center center; }
+    .image-preview-modal-footer { display: flex; justify-content: center; padding: 10px; border-top: 1px solid var(--border); }
+    .image-preview-modal-footer .zoom-controls { margin-left: 0; }
+
+    /* Editor canvas panel */
+    .editor-panel { display: flex; flex-direction: column; overflow: hidden; background: #080808; }
+    .editor-toolbar { padding: 8px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-shrink: 0; background: var(--surface); flex-wrap: wrap; }
+    .editor-toolbar-group { display: flex; align-items: center; gap: 6px; }
+    .editor-toolbar-sep { width: 1px; height: 20px; background: var(--border-hi); margin: 0 4px; }
+    .tool-btn { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--muted); padding: 5px 10px; font-size: 10px; font-family: 'Syne', sans-serif; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: color 0.15s, border-color 0.15s; -webkit-app-region: no-drag; }
+    .tool-btn:hover { color: var(--text); border-color: var(--border-hi); }
+    .tool-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(232,255,71,0.06); }
+    .tool-btn-accent { background: var(--accent); color: #000; border: none; border-radius: var(--radius); padding: 6px 12px; font-size: 10px; font-family: 'Syne', sans-serif; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; display: flex; align-items: center; gap: 5px; -webkit-app-region: no-drag; }
+    .tool-btn-accent:hover { opacity: 0.88; }
+    .tool-label { font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace; }
+    .tol-slider { width: 70px; accent-color: var(--accent); cursor: pointer; }
+    .color-swatch { width: 22px; height: 22px; border-radius: 4px; border: 2px solid var(--border-hi); cursor: pointer; flex-shrink: 0; -webkit-app-region: no-drag; }
+    input[type=color] { width: 22px; height: 22px; padding: 0; border: none; background: none; cursor: pointer; border-radius: 4px; -webkit-app-region: no-drag; }
+
+    /* Eyedropper buttons */
+    .eyedropper-btn { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--muted); width: 24px; height: 24px; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: color 0.15s, border-color 0.15s; -webkit-app-region: no-drag; flex-shrink: 0; }
+    .eyedropper-btn:hover { color: var(--accent); border-color: var(--accent); }
+    .eyedropper-btn[hidden] { display: none; }
+
+    /* Recent colors palette */
+    .recent-colors-wrap { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .recent-colors-grid { display: grid; grid-template-columns: repeat(6, 16px); gap: 3px; }
+    .recent-colors-grid:empty { display: none; }
+    .recent-color-swatch { width: 16px; height: 16px; border-radius: 3px; border: 1px solid var(--border-hi); cursor: pointer; transition: border-color 0.12s, transform 0.08s; }
+    .recent-color-swatch:hover { border-color: var(--accent); transform: scale(1.15); }
+
+    .editor-canvas-area { flex: 1; overflow: auto; display: flex; align-items: flex-start; justify-content: center; padding: 24px; position: relative; }
+    .editor-canvas-area::-webkit-scrollbar { width: 6px; height: 6px; }
+    .editor-canvas-area::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 4px; }
+
+    /* Stage: outer box sized to post-scale dimensions; inner holds natural-size content + transform */
+    #editorStage { display: none; position: relative; flex-shrink: 0; box-shadow: 0 8px 40px rgba(0,0,0,0.7); }
+    #editorStageInner { position: relative; transform-origin: top left; }
+
+    #editorCanvas { display: block; cursor: crosshair; }
+    #editorCanvas.tool-text { cursor: text; }
+    #editorCanvas.tool-move { cursor: move; }
+
+    /* Zoom bar */
+    .editor-zoom-bar { position: absolute; bottom: 14px; right: 14px; z-index: 50; display: flex; align-items: center; gap: 4px; background: var(--surface); border: 1px solid var(--border-hi); border-radius: var(--radius); padding: 4px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
+
+    /* SVG editor container */
+    #svgEditorWrap {
+      display: none;
+      position: relative;
+      background: #fff;
+    }
+    #svgEditorWrap.visible { display: block; }
+    #svgEditorWrap svg {
+      display: block;
+    }
+    /* SVG path hover/selected states — injected via JS */
+    #svgEditorWrap.tool-color svg path:hover,
+    #svgEditorWrap.tool-color svg rect:hover,
+    #svgEditorWrap.tool-color svg circle:hover,
+    #svgEditorWrap.tool-color svg ellipse:hover,
+    #svgEditorWrap.tool-color svg polygon:hover {
+      opacity: 0.75;
+      cursor: crosshair;
+      outline: 2px solid #e8ff47;
+    }
+    .svg-selected-el {
+      outline: 2px solid #e8ff47 !important;
+    }
+    /* Raster-backed SVG (svg wrapping a single <image>): color tool clicks the image itself */
+    #svgEditorWrap.tool-color svg image {
+      cursor: crosshair;
+    }
+    /* Color palette panel for SVG */
+    #svgColorPanel {
+      display: none;
+      position: absolute;
+      background: var(--surface);
+      border: 1px solid var(--border-hi);
+      border-radius: 8px;
+      padding: 10px 12px;
+      gap: 8px;
+      flex-direction: column;
+      z-index: 100;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      min-width: 180px;
+    }
+    #svgColorPanel.visible { display: flex; }
+    #svgColorPanel .scp-label { font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace; }
+    #svgColorPanel .scp-row { display: flex; align-items: center; gap: 8px; }
+    #svgColorPanel .scp-swatch { width: 24px; height: 24px; border-radius: 4px; border: 2px solid var(--border-hi); flex-shrink: 0; }
+    #svgColorPanel .scp-apply {
+      background: var(--accent); color: #000; border: none; border-radius: 4px;
+      font-size: 10px; font-weight: 700; padding: 5px 10px; cursor: pointer;
+      font-family: 'Syne', sans-serif; letter-spacing: 0.05em; -webkit-app-region: no-drag;
+    }
+    #svgColorPanel .scp-close {
+      background: transparent; color: var(--muted); border: 1px solid var(--border);
+      border-radius: 4px; font-size: 10px; padding: 5px 8px; cursor: pointer;
+      font-family: 'Syne', sans-serif; -webkit-app-region: no-drag;
+    }
+    /* Group: show all paths of same color */
+    #svgColorPanel .scp-group-info { font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace; }
+
+    /* Text layers: rendered on a canvas (pixel-identical to the Tiler export);
+       #textLayersDiv only provides invisible hit-areas for select/drag/edit. */
+    #textOverlayCanvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+    #textLayersDiv { position: absolute; inset: 0; pointer-events: none; }
+    .text-layer-el { position: absolute; pointer-events: all; cursor: move; user-select: none; color: transparent; }
+    .text-layer-el:hover, .text-layer-el.selected { outline: 1px dashed var(--accent); outline-offset: 2px; }
+    .text-layer-el .text-del { position: absolute; top: -8px; right: -8px; width: 16px; height: 16px; background: var(--accent2); border: none; border-radius: 50%; color: #fff; font-size: 9px; cursor: pointer; display: none; align-items: center; justify-content: center; -webkit-app-region: no-drag; padding: 0; letter-spacing: 0; }
+    .text-layer-el.selected .text-del { display: flex; }
+
+    .editor-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--muted); }
+    .editor-empty p { font-size: 13px; }
+
+    /* Right panel — Editor de Matriz */
+    .editor-right-panel { border-left: 1px solid var(--border); overflow-y: auto; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+    .editor-right-panel::-webkit-scrollbar { width: 4px; }
+    .editor-right-panel::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 4px; }
+    .editor-layout.panel-collapsed .editor-right-panel { display: none; }
+
+    .erp-section { padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; flex-shrink: 0; }
+    .erp-section-title { font-size: 10px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: #e0e0e0; }
+    .erp-field { display: flex; flex-direction: column; gap: 4px; }
+    .erp-field label { font-size: 10px; color: var(--muted); font-weight: 500; letter-spacing: 0.04em; }
+    .erp-field input[type=text], .erp-field input[type=number], .erp-field select {
+      background: var(--surface); border: 1px solid var(--border-hi); border-radius: var(--radius);
+      color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px; padding: 7px 10px;
+      outline: none; width: 100%; -webkit-app-region: no-drag;
+    }
+    .erp-field input:focus, .erp-field select:focus { border-color: var(--accent); }
+    .erp-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .erp-row-color { display: flex; align-items: center; gap: 6px; }
+    .erp-checkbox-row { display: flex; align-items: center; height: 100%; padding-top: 4px; gap: 6px; }
+    .erp-checkbox-row input { accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
+
+    .erp-layer-list { display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow-y: auto; }
+    .erp-layer-list::-webkit-scrollbar { width: 4px; }
+    .erp-layer-list::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 4px; }
+    .erp-layer-row { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; transition: border-color 0.12s; }
+    .erp-layer-row:hover { border-color: var(--border-hi); }
+    .erp-layer-row.selected { border-color: var(--accent); background: rgba(232,255,71,0.06); }
+    .erp-color-chip { width: 16px; height: 16px; border-radius: 3px; border: 1px solid var(--border-hi); flex-shrink: 0; }
+    .erp-layer-label { flex: 1; min-width: 0; font-size: 11px; font-family: 'DM Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .erp-layer-meta { display: block; font-size: 9px; color: var(--muted); margin-top: 2px; }
+    .erp-layer-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+    .erp-layer-del { background: none; border: none; color: var(--muted); font-size: 14px; cursor: pointer; padding: 2px 4px; border-radius: 3px; line-height: 1; -webkit-app-region: no-drag; }
+    .erp-layer-del:hover { color: var(--accent2); }
+    .erp-layer-move { background: none; border: 1px solid var(--border); color: var(--muted); font-size: 9px; cursor: pointer; padding: 1px 4px; border-radius: 3px; -webkit-app-region: no-drag; line-height: 1.4; }
+    .erp-layer-move:hover { color: var(--accent); border-color: var(--accent); }
+    .erp-empty { font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace; padding: 4px 0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo-area">
+    <div class="logo-mark"><span></span><span></span><span></span><span></span></div>
+    <h1>Image Tiler</h1>
+  </div>
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="tiler">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Tiler
+    </button>
+    <button class="tab-btn" data-tab="editor">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      Editor de Matriz
+    </button>
+  </nav>
+  <div class="header-right">
+    <button class="update-btn" id="btnUpdate" title="Abrir página de releases no GitHub">⬆ Atualização disponível</button>
+    <span class="version" id="appVersion">v2.0.0</span>
+  </div>
+</header>
+
+<!-- ── TILER TAB ── -->
+<div class="tab-panel active" id="tab-tiler">
+  <div class="workspace">
+    <aside class="sidebar">
+      <div>
+        <div class="section-label">Imagem</div>
+        <div class="drop-zone" id="dropZone">
+          <input type="file" id="fileInput" accept="image/*" />
+          <span class="drop-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted)"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></span>
+          <p>Arraste a imagem aqui<br>ou <strong>clique para selecionar</strong></p>
+        </div>
+        <img id="dropThumb" class="drop-thumb" alt="preview" />
+      </div>
+      <div>
+        <div class="section-label">Tamanho da imagem</div>
+        <div class="field-group">
+          <div class="row-2">
+            <div class="field"><label>Largura</label><div class="input-wrap"><input type="number" id="imgW" value="5" min="0.1" max="50" step="0.1"/><span class="unit">cm</span></div></div>
+            <div class="field"><label>Altura</label><div class="input-wrap"><input type="number" id="imgH" value="5" min="0.1" max="50" step="0.1"/><span class="unit">cm</span></div></div>
+          </div>
+          <div class="field"><label>Alinhamento horizontal</label><div class="align-btns"><button class="align-btn active" data-align="left" title="Esquerda">⇤</button><button class="align-btn" data-align="center" title="Centro">⇔</button><button class="align-btn" data-align="right" title="Direita">⇥</button></div></div>
+        </div>
+      </div>
+      <div>
+        <div class="section-label">Folha de impressão</div>
+        <div class="field-group">
+          <div class="field"><label>Formato</label><select id="pageFormat"><option value="A4">A4 — 21 × 29.7 cm</option><option value="A3">A3 — 29.7 × 42 cm</option><option value="Letter">Carta — 21.59 × 27.94 cm</option><option value="custom">Personalizado…</option></select></div>
+          <div class="row-2" id="customPageSize">
+            <div class="field"><label>Larg. folha</label><div class="input-wrap"><input type="number" id="customW" value="21" min="1" max="100" step="0.1"/><span class="unit">cm</span></div></div>
+            <div class="field"><label>Alt. folha</label><div class="input-wrap"><input type="number" id="customH" value="29.7" min="1" max="100" step="0.1"/><span class="unit">cm</span></div></div>
+          </div>
+          <div class="field"><label>Orientação</label><select id="pageOrient"><option value="portrait">Retrato</option><option value="landscape">Paisagem</option></select></div>
+          <div class="row-2">
+            <div class="field"><label>Margem horiz.</label><div class="input-wrap"><input type="number" id="marginH" value="1" min="0" max="10" step="0.1"/><span class="unit">cm</span></div></div>
+            <div class="field"><label>Margem vert.</label><div class="input-wrap"><input type="number" id="marginV" value="1" min="0" max="10" step="0.1"/><span class="unit">cm</span></div></div>
+          </div>
+          <div class="row-2">
+            <div class="field"><label>Espaço horiz.</label><div class="input-wrap"><input type="number" id="gapH" value="0.3" min="0" max="5" step="0.1"/><span class="unit">cm</span></div></div>
+            <div class="field"><label>Espaço vert.</label><div class="input-wrap"><input type="number" id="gapV" value="0.3" min="0" max="5" step="0.1"/><span class="unit">cm</span></div></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="section-label">Quantidade</div>
+        <div class="field-group"><div class="field"><label>Número de cópias</label><input type="number" id="copies" value="10" min="1" max="9999" step="1"/></div></div>
+      </div>
+      <div>
+        <div class="section-label">Presets</div>
+        <div class="preset-wrap">
+          <button class="preset-trigger" id="presetTrigger" type="button">
+            <span class="pt-label" id="presetTriggerLabel">Selecionar preset…</span>
+            <span class="pt-arrow">▼</span>
+          </button>
+          <div class="preset-dropdown" id="presetDropdown">
+            <div class="preset-add-row" id="presetAddRow">
+              <span class="add-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
+              <span class="add-label">Novo preset…</span>
+            </div>
+            <div class="preset-new-input-row" id="presetNewRow">
+              <input type="text" id="presetNewName" placeholder="Nome do preset…" maxlength="30"/>
+              <button id="presetNewSave">OK</button>
+            </div>
+            <div class="preset-list" id="presetList"></div>
+          </div>
+        </div>
+        <div class="inline-prompt" id="inlinePrompt">
+          <label>Nome para o novo preset</label>
+          <input type="text" id="inlinePresetName" placeholder="Nome…" maxlength="30"/>
+          <div class="inline-prompt-actions">
+            <button class="ipa-cancel" id="ipCancel">Cancelar</button>
+            <button class="ipa-ok" id="ipConfirm">Salvar</button>
+          </div>
+        </div>
+        <button class="btn-save-preset" id="btnSavePreset">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          Salvar configurações no preset
+        </button>
+      </div>
+      <div>
+        <div class="section-label">Ações</div>
+        <div class="btn-grid">
+          <button class="btn-primary btn-compact" id="btnPreview" disabled><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button>
+          <button class="btn-danger btn-compact" id="btnClear"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6M9 6V4h6v2"/></svg>Limpar</button>
+          <button class="btn-secondary btn-compact" id="btnSave" disabled><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Salvar PDF</button>
+          <button class="btn-secondary btn-compact" id="btnPrint" disabled><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>Imprimir</button>
+        </div>
+        <div class="status-bar" id="statusBar"></div>
+        <div style="display:flex;gap:8px;align-items:center;"><div class="spinner" id="spinner"></div></div>
+      </div>
+    </aside>
+    <main class="preview-area">
+      <div class="preview-toolbar">
+        <span>Preview</span>
+        <div class="badge" id="badgeInfo">— sem imagem —</div>
+        <label class="guide-toggle"><input type="checkbox" id="showGuides" checked/> Guias</label>
+        <div class="zoom-controls">
+          <button class="zoom-btn" id="btnZoomOut">−</button>
+          <span class="zoom-level" id="zoomLabel">75%</span>
+          <button class="zoom-btn" id="btnZoomIn">+</button>
+          <button class="zoom-btn" id="btnZoomFit" title="Ajustar à tela">⊡</button>
+        </div>
+      </div>
+      <div class="canvas-wrapper" id="canvasWrapper">
+        <div class="empty-state">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);opacity:0.3"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <p>Selecione uma imagem e configure os parâmetros</p>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ── EDITOR DE MATRIZ TAB ── -->
+<div class="tab-panel" id="tab-editor">
+  <div class="editor-layout">
+
+    <!-- Gallery -->
+    <div class="gallery-panel">
+      <div class="gallery-header">
+        <span>Matrizes</span>
+        <button class="gallery-upload-btn" id="btnNewMatrix">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Nova Matriz
+        </button>
+        <input type="file" id="matrixFileInput" accept="image/*,.svg" style="display:none;" />
+      </div>
+      <div class="gallery-search-wrap">
+        <input type="text" id="gallerySearch" placeholder="Buscar matriz…" autocomplete="off" />
+      </div>
+      <div class="gallery-list" id="galleryList">
+        <div class="gallery-empty">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" style="opacity:0.2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+          <p>Nenhuma matriz ainda.<br>Clique em <strong style="color:var(--accent)">Nova Matriz</strong> para começar.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Editor -->
+    <div class="editor-panel">
+      <!-- Toolbar -->
+      <div class="editor-toolbar" id="editorToolbar">
+        <div class="editor-toolbar-group">
+          <button class="tool-btn" id="toolNone" title="Mover texto (sem ferramenta ativa)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>
+            Mover
+          </button>
+          <button class="tool-btn active" id="toolColor" title="Trocar cor por clique">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 13.5V20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6.5"/><path d="M10 2 8 6H4l3 4-1 4 4-2 4 2-1-4 3-4h-4z"/></svg>
+            Trocar Cor
+          </button>
+          <div class="editor-toolbar-group" id="colorPickerGroup">
+            <span class="tool-label">Nova cor:</span>
+            <input type="color" id="replaceColor" value="#ff0000" title="Cor de substituição"/>
+            <button class="eyedropper-btn" id="replaceColorEyedropper" title="Conta-gotas">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 22 1-4 9.586-9.586a2 2 0 0 1 2.828 0l1.172 1.172a2 2 0 0 1 0 2.828L5 22z"/><path d="m12 7 4 4"/></svg>
+            </button>
+            <div class="recent-colors-grid" data-target="replaceColor" id="recentColorsReplace"></div>
+            <span class="tool-label">Tolerância:</span>
+            <input type="range" class="tol-slider" id="colorTolerance" min="1" max="120" value="40"/>
+            <span class="tool-label" id="tolValue">40</span>
+          </div>
+        </div>
+        <div class="editor-toolbar-sep"></div>
+        <div class="editor-toolbar-group">
+          <button class="tool-btn" id="toolText" title="Adicionar texto">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+            Adicionar Texto
+          </button>
+        </div>
+        <div class="editor-toolbar-sep"></div>
+        <div class="editor-toolbar-group" style="margin-left:auto;">
+          <button class="tool-btn" id="btnUndo" title="Desfazer (Ctrl+Z)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+            Desfazer
+          </button>
+          <button class="tool-btn" id="btnRedo" title="Refazer (Ctrl+Y)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>
+            Refazer
+          </button>
+          <button class="tool-btn" id="btnTogglePanel" title="Mostrar/ocultar painel lateral">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+          </button>
+          <button class="tool-btn-accent" id="btnSendToTiler" title="Exportar para Image Tiler">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+            Usar no Tiler
+          </button>
+        </div>
+      </div>
+
+      <!-- Canvas area -->
+      <div class="editor-canvas-area" id="editorCanvasArea">
+        <div class="editor-empty" id="editorEmpty">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" style="opacity:0.2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          <p>Selecione uma matriz na lista para editar</p>
+        </div>
+        <!-- Stage: natural-resolution content, scaled as a single unit -->
+        <div id="editorStage">
+          <div id="editorStageInner">
+            <!-- Raster canvas -->
+            <canvas id="editorCanvas" style="display:none;"></canvas>
+            <!-- SVG editor container -->
+            <div id="svgEditorWrap"></div>
+            <!-- Text layers: drawn here with fillText, identical to the Tiler export -->
+            <canvas id="textOverlayCanvas"></canvas>
+            <!-- Invisible hit-areas for select/drag/edit (works for both raster and SVG) -->
+            <div id="textLayersDiv"></div>
+          </div>
+        </div>
+        <!-- SVG color picker panel (positioned absolutely, not scaled) -->
+        <div id="svgColorPanel">
+          <span class="scp-label" id="scpLabel">Cor selecionada</span>
+          <div class="scp-row">
+            <div class="scp-swatch" id="scpSwatch"></div>
+            <span class="scp-group-info" id="scpGroupInfo"></span>
+          </div>
+          <div class="scp-row">
+            <span class="scp-label">Nova cor:</span>
+            <input type="color" id="scpColorPicker" value="#ff0000" style="-webkit-app-region:no-drag;"/>
+            <button class="eyedropper-btn" id="scpColorEyedropper" title="Conta-gotas">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 22 1-4 9.586-9.586a2 2 0 0 1 2.828 0l1.172 1.172a2 2 0 0 1 0 2.828L5 22z"/><path d="m12 7 4 4"/></svg>
+            </button>
+          </div>
+          <div class="scp-row">
+            <div class="recent-colors-grid" data-target="scpColorPicker" id="recentColorsSvg"></div>
+          </div>
+          <div class="scp-row" style="gap:6px;">
+            <button class="scp-apply" id="scpApply">Aplicar</button>
+            <button class="scp-apply" id="scpApplyAll" style="background:var(--surface);color:var(--accent);border:1px solid var(--accent);">Aplicar a todas iguais</button>
+            <button class="scp-close" id="scpClose">Fechar</button>
+          </div>
+        </div>
+        <!-- Zoom bar -->
+        <div class="editor-zoom-bar" id="editorZoomBar">
+          <button class="zoom-btn" id="edZoomOut" title="Diminuir zoom">−</button>
+          <span class="zoom-level" id="edZoomLabel">100%</span>
+          <button class="zoom-btn" id="edZoomIn" title="Aumentar zoom">+</button>
+          <button class="zoom-btn" id="edZoomFit" title="Ajustar à tela">⊡</button>
+        </div>
+      </div>
+
+      <!-- Editor status bar -->
+      <div id="editorStatusBar" style="padding:4px 16px;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;min-height:22px;"></div>
+    </div>
+
+    <!-- Right panel -->
+    <div class="editor-right-panel" id="editorRightPanel">
+      <div class="erp-section">
+        <div class="erp-section-title">Matriz</div>
+        <div class="erp-field">
+          <label>Preset vinculado</label>
+          <select id="matrixPresetSelect">
+            <option value="">— nenhum —</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="erp-section">
+        <div class="erp-section-title">Camadas de Texto</div>
+        <div class="erp-layer-list" id="textLayerList">
+          <div class="erp-empty">Nenhum texto adicionado.</div>
+        </div>
+      </div>
+
+      <div class="erp-section" id="erpTextPropsSection" style="display:none;">
+        <div class="erp-section-title">Propriedades do Texto</div>
+        <div class="erp-field">
+          <label>Texto</label>
+          <input type="text" id="tpContent" placeholder="Digite o texto…"/>
+        </div>
+        <div class="erp-row-2">
+          <div class="erp-field">
+            <label>Fonte</label>
+            <select id="tpFont">
+              <option value="Arial">Arial</option>
+              <option value="Georgia">Georgia</option>
+              <option value="Courier New">Courier New</option>
+              <option value="Verdana">Verdana</option>
+              <option value="Times New Roman">Times New Roman</option>
+              <option value="Impact">Impact</option>
+              <option value="Trebuchet MS">Trebuchet MS</option>
+            </select>
+          </div>
+          <div class="erp-field">
+            <label>Tamanho</label>
+            <input type="number" id="tpSize" value="32" min="8" max="200" step="1"/>
+          </div>
+        </div>
+        <div class="erp-row-2">
+          <div class="erp-field">
+            <label>Cor</label>
+            <div class="erp-row-color">
+              <input type="color" id="tpColor" value="#ffffff"/>
+              <button class="eyedropper-btn" id="tpColorEyedropper" title="Conta-gotas">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 22 1-4 9.586-9.586a2 2 0 0 1 2.828 0l1.172 1.172a2 2 0 0 1 0 2.828L5 22z"/><path d="m12 7 4 4"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="erp-checkbox-row">
+            <input type="checkbox" id="tpBold"/>
+            <label for="tpBold">Negrito</label>
+          </div>
+        </div>
+        <div class="erp-field">
+          <div class="recent-colors-grid" data-target="tpColor" id="recentColorsText"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Upload name modal -->
+<div class="upload-modal-overlay" id="uploadModalOverlay">
+  <div class="upload-modal">
+    <h3>Nome da Matriz</h3>
+    <input type="text" id="uploadMatrixName" placeholder="Ex: Fita Cassete Azul" maxlength="40"/>
+    <div class="upload-modal-actions">
+      <button class="btn-secondary" id="uploadModalCancel" style="padding:8px 16px;font-size:10px;">Cancelar</button>
+      <button class="btn-primary" id="uploadModalConfirm" style="padding:8px 16px;font-size:10px;">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Image preview modal -->
+<div class="image-preview-modal-overlay" id="imagePreviewOverlay">
+  <div class="image-preview-modal">
+    <div class="image-preview-modal-header">
+      <span>Visualizar imagem</span>
+      <button class="image-preview-close" id="imagePreviewClose" title="Fechar">✕</button>
+    </div>
+    <div class="image-preview-modal-body" id="imagePreviewBody">
+      <img id="imagePreviewImg" alt="preview" />
+    </div>
+    <div class="image-preview-modal-footer">
+      <div class="zoom-controls">
+        <button class="zoom-btn" id="ipvZoomOut">−</button>
+        <span class="zoom-level" id="ipvZoomLabel">100%</span>
+        <button class="zoom-btn" id="ipvZoomIn">+</button>
+        <button class="zoom-btn" id="ipvZoomFit" title="Ajustar à tela">⊡</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="renderer.js"></script>
+<script src="editor.js"></script>
+</body>
+</html>
